@@ -1,0 +1,37 @@
+---
+- name: Flip the target groups of a load balancer
+  hosts: localhost
+  tasks:
+    - name: Describe listener for Load Balancer first
+      shell: aws elbv2 describe-listeners --load-balancer-arn <load-balancer-arn>
+      register: describe_listener1
+
+    - set_fact:
+        ListenerARN_1: "{{ (describe_listener1.stdout|from_json).Listeners[0].ListenerArn }}"
+
+    - set_fact:
+        TG_1: "{{item.TargetGroupArn}}"
+      with_items: "{{ (describe_listener1.stdout|from_json).Listeners[0].DefaultActions }}"
+
+    - name: Describe listener for Load Balancer second
+      shell: aws elbv2 describe-listeners --load-balancer-arn <load-balancer-arn>
+      register: describe_listener2
+
+    - set_fact:
+        ListenerARN_2: "{{ (describe_listener2.stdout|from_json).Listeners[0].ListenerArn }}"
+
+    - set_fact:
+        TG_2: "{{item.TargetGroupArn}}"
+      with_items: "{{ (describe_listener2.stdout|from_json).Listeners[0].DefaultActions }}"
+
+    - name: Delete listeners using Listener ARN
+      shell: "{{ item }}"
+      with_items:
+        - aws elbv2 delete-listener --listener-arn "{{ListenerARN_1}}"
+        - aws elbv2 delete-listener --listener-arn "{{ListenerARN_2}}"
+
+    - name: Create listeners with target groups attached
+      shell: "{{ item }}"
+      with_items:
+        -  'aws elbv2 create-listener --load-balancer-arn <load-balancer-arn> --protocol TCP --port 7003 --default-actions Type=forward,TargetGroupArn="{{TG_2}}"'
+        -  'aws elbv2 create-listener --load-balancer-arn <load-balancer-arn> --protocol TCP --port 7003 --default-actions Type=forward,TargetGroupArn="{{TG_1}}"'
